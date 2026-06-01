@@ -1,0 +1,32 @@
+[project]
+name = "lofi-stream"
+version = "0.1.0"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "aiofiles>=23.0.0",
+    "scipy>=1.11.0",
+    "diffusers>=0.32.0",
+    "transformers>=4.44.0",
+    "accelerate>=1.0.0",
+    "safetensors>=0.4.0",
+    "Pillow>=10.0.0",
+    "imageio[ffmpeg]>=2.34.0",
+    "numpy<2.0",
+    "huggingface-hub>=0.24.0",
+    "torch>=2.4.0",
+    "torchaudio>=2.4.0",
+    "torchcodec>=0.13.0",
+]
+
+
+[tool.uv.sources]
+torch = { index = "pytorch" }
+torchaudio = { index = "pytorch" }
+
+[[tool.uv.index]]
+name = "pytorch"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+

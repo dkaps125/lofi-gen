@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+
+# Generated stream output
+output/
+
+# uv / pip
+.python-version
+
+# Env / secrets
+.env
+*.env
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*~

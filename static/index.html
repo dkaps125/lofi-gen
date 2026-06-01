@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>lofi stream</title>
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0a0a0f;
+      color: #c8b89a;
+      font-family: 'Georgia', serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      padding: 24px;
+    }
+
+    #player-wrap {
+      position: relative;
+      width: 100%;
+      max-width: 832px;
+    }
+
+    video {
+      width: 100%;
+      border-radius: 6px;
+      display: block;
+      background: #111;
+    }
+
+    #overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(10, 10, 15, 0.85);
+      border-radius: 6px;
+      flex-direction: column;
+      gap: 14px;
+      transition: opacity 0.6s;
+    }
+
+    #overlay.hidden { opacity: 0; pointer-events: none; }
+
+    .spinner {
+      width: 32px; height: 32px;
+      border: 2px solid rgba(200, 184, 154, 0.2);
+      border-top-color: #c8b89a;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    #loading-text {
+      font-size: 0.9rem;
+      letter-spacing: 0.12em;
+      opacity: 0.7;
+    }
+
+    #info {
+      width: 100%;
+      max-width: 832px;
+      font-size: 0.78rem;
+      opacity: 0.45;
+      line-height: 1.6;
+    }
+
+    #info span { display: block; }
+
+    #unmute-btn {
+      display: none;
+      padding: 8px 20px;
+      background: none;
+      border: 1px solid rgba(200, 184, 154, 0.4);
+      color: #c8b89a;
+      border-radius: 4px;
+      font-family: inherit;
+      font-size: 0.85rem;
+      cursor: pointer;
+      letter-spacing: 0.08em;
+    }
+    #unmute-btn:hover { border-color: #c8b89a; }
+  </style>
+</head>
+<body>
+
+  <div id="player-wrap">
+    <video id="video" playsinline></video>
+    <div id="overlay">
+      <div class="spinner"></div>
+      <div id="loading-text">generating stream…</div>
+    </div>
+  </div>
+
+  <div id="info">
+    <span id="scene-line"></span>
+    <span id="music-line"></span>
+  </div>
+
+  <button id="unmute-btn" onclick="unmute()">▶ unmute</button>
+
+  <script>
+    const video     = document.getElementById('video');
+    const overlay   = document.getElementById('overlay');
+    const loadText  = document.getElementById('loading-text');
+    const sceneLine = document.getElementById('scene-line');
+    const musicLine = document.getElementById('music-line');
+    const unmuteBtn = document.getElementById('unmute-btn');
+
+    let hls = null;
+    let streaming = false;
+
+    function startStream() {
+      if (streaming) return;
+      streaming = true;
+
+      const src = '/hls/stream.m3u8';
+
+      if (Hls.isSupported()) {
+        hls = new Hls({
+          // Stay 8 segments behind live edge — gives runway before generation catches up
+          liveSyncDurationCount: 8,
+          liveMaxLatencyDurationCount: 16,
+          maxBufferLength: 120,
+          enableWorker: true,
+          // Retry aggressively: segments may 404 briefly while still being written
+          fragLoadingMaxRetry: 6,
+          fragLoadingRetryDelay: 2000,
+          manifestLoadingMaxRetry: 4,
+        });
+        hls.loadSource(src);
+        hls.attachMedia(video);
+        hls.on(Hls.Events.MANIFEST_PARSED, (_, d) => {
+          console.log('[hls] manifest parsed, levels:', d.levels?.length, 'duration:', d.levels?.[0]?.details?.totalduration);
+          tryPlay();
+        });
+        hls.on(Hls.Events.LEVEL_UPDATED, (_, d) => {
+          const det = d.details;
+          console.log('[hls] playlist updated — seq:', det.startSN, '–', det.endSN,
+            'frags:', det.fragments?.length, 'live:', det.live,
+            'totalDuration:', det.totalduration?.toFixed(1) + 's');
+        });
+        hls.on(Hls.Events.FRAG_LOADED, (_, d) => {
+          console.log('[hls] frag loaded:', d.frag.sn, d.frag.url, d.frag.duration?.toFixed(2) + 's');
+        });
+        hls.on(Hls.Events.BUFFER_APPENDED, (_, d) => {
+          const r = d.timeRanges?.video;
+          const buf = r && r.length ? `${r.start(0).toFixed(1)}–${r.end(r.length-1).toFixed(1)}s` : 'empty';
+          console.log('[hls] buffer:', buf, '| currentTime:', video.currentTime?.toFixed(2));
+        });
+        hls.on(Hls.Events.ERROR, (_, data) => {
+          console.warn('[hls] error', data.type, data.details, data.fatal, data);
+          if (!data.fatal) return;
+          if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+            hls.recoverMediaError();
+          } else if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+            setTimeout(() => hls.startLoad(), 3000);
+          } else {
+            hls.destroy();
+            streaming = false;
+            setTimeout(startStream, 5000);
+          }
+        });
+      } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        // Safari native HLS
+        video.src = src;
+        video.addEventListener('loadedmetadata', tryPlay);
+      }
+    }
+
+    function tryPlay() {
+      overlay.classList.add('hidden');
+      video.play().catch(() => {
+        // Autoplay blocked — show muted stream + unmute button
+        video.muted = true;
+        video.play();
+        unmuteBtn.style.display = 'inline-block';
+      });
+    }
+
+    function unmute() {
+      video.muted = false;
+      unmuteBtn.style.display = 'none';
+    }
+
+    // Log native media events so we can see what the browser itself sees
+    ['play','pause','stalled','waiting','ended','error','suspend'].forEach(e => {
+      video.addEventListener(e, () => {
+        const err = video.error ? `code=${video.error.code} msg=${video.error.message}` : '';
+        console.log('[video]', e, 'currentTime:', video.currentTime?.toFixed(2), err);
+      });
+    });
+
+    async function pollStatus() {
+      try {
+        const res = await fetch('/status');
+        const data = await res.json();
+
+        if (data.scene) sceneLine.textContent = '⌗ ' + data.scene;
+        if (data.music) musicLine.textContent = '♪ ' + data.music;
+
+        if (data.ready) {
+          loadText.textContent = 'buffering…';
+          startStream();
+        } else {
+          loadText.textContent = 'generating stream…';
+          setTimeout(pollStatus, 2000);
+          return;
+        }
+      } catch (_) {}
+      setTimeout(pollStatus, 5000);
+    }
+
+    pollStatus();
+  </script>
+</body>
+</html>
