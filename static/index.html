@@ -138,27 +138,10 @@
         });
         hls.loadSource(src);
         hls.attachMedia(video);
-        hls.on(Hls.Events.MANIFEST_PARSED, (_, d) => {
-          console.log('[hls] manifest parsed, levels:', d.levels?.length, 'duration:', d.levels?.[0]?.details?.totalduration);
-          tryPlay();
-        });
-        hls.on(Hls.Events.LEVEL_UPDATED, (_, d) => {
-          const det = d.details;
-          console.log('[hls] playlist updated — seq:', det.startSN, '–', det.endSN,
-            'frags:', det.fragments?.length, 'live:', det.live,
-            'totalDuration:', det.totalduration?.toFixed(1) + 's');
-        });
-        hls.on(Hls.Events.FRAG_LOADED, (_, d) => {
-          console.log('[hls] frag loaded:', d.frag.sn, d.frag.url, d.frag.duration?.toFixed(2) + 's');
-        });
-        hls.on(Hls.Events.BUFFER_APPENDED, (_, d) => {
-          const r = d.timeRanges?.video;
-          const buf = r && r.length ? `${r.start(0).toFixed(1)}–${r.end(r.length-1).toFixed(1)}s` : 'empty';
-          console.log('[hls] buffer:', buf, '| currentTime:', video.currentTime?.toFixed(2));
-        });
+        hls.on(Hls.Events.MANIFEST_PARSED, () => tryPlay());
         hls.on(Hls.Events.ERROR, (_, data) => {
-          console.warn('[hls] error', data.type, data.details, data.fatal, data);
           if (!data.fatal) return;
+          console.warn('[hls] fatal error', data.type, data.details);
           if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
             hls.recoverMediaError();
           } else if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
@@ -190,14 +173,6 @@
       video.muted = false;
       unmuteBtn.style.display = 'none';
     }
-
-    // Log native media events so we can see what the browser itself sees
-    ['play','pause','stalled','waiting','ended','error','suspend'].forEach(e => {
-      video.addEventListener(e, () => {
-        const err = video.error ? `code=${video.error.code} msg=${video.error.message}` : '';
-        console.log('[video]', e, 'currentTime:', video.currentTime?.toFixed(2), err);
-      });
-    });
 
     async function pollStatus() {
       try {

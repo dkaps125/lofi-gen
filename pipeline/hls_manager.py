@@ -43,7 +43,7 @@ class HLSManager:
         base = self._global_seq
         seg_pattern = str(self.output_dir / f"seg{base:07d}_%03d.ts")
 
-        result = subprocess.run(
+        subprocess.run(
             [
                 "ffmpeg", "-y",
                 "-stream_loop", "-1", "-i", str(video_clip),
