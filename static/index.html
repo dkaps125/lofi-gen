@@ -118,6 +118,24 @@
     let hls = null;
     let streaming = false;
 
+    // Watchdog: if the video hasn't advanced for this many ms, force recovery.
+    const STALL_TIMEOUT_MS = 8000;
+    let stallTimer = null;
+    let lastTime = 0;
+
+    function resetStallTimer() {
+      clearTimeout(stallTimer);
+      stallTimer = setTimeout(() => {
+        if (video.currentTime === lastTime && !video.paused) {
+          // Buffer stall — tell HLS.js to resume fetching then nudge the player.
+          // startLoad() is the right call here; recoverMediaError() is for codec errors.
+          if (hls) hls.startLoad();
+          video.play().catch(() => {});
+        }
+        lastTime = video.currentTime;
+      }, STALL_TIMEOUT_MS);
+    }
+
     function startStream() {
       if (streaming) return;
       streaming = true;
@@ -126,15 +144,14 @@
 
       if (Hls.isSupported()) {
         hls = new Hls({
-          // Stay 8 segments behind live edge — gives runway before generation catches up
           liveSyncDurationCount: 8,
           liveMaxLatencyDurationCount: 16,
           maxBufferLength: 120,
           enableWorker: true,
-          // Retry aggressively: segments may 404 briefly while still being written
-          fragLoadingMaxRetry: 6,
+          fragLoadingMaxRetry: 8,
           fragLoadingRetryDelay: 2000,
-          manifestLoadingMaxRetry: 4,
+          manifestLoadingMaxRetry: 6,
+          manifestLoadingRetryDelay: 2000,
         });
         hls.loadSource(src);
         hls.attachMedia(video);
@@ -162,7 +179,6 @@
     function tryPlay() {
       overlay.classList.add('hidden');
       video.play().catch(() => {
-        // Autoplay blocked — show muted stream + unmute button
         video.muted = true;
         video.play();
         unmuteBtn.style.display = 'inline-block';
@@ -173,6 +189,12 @@
       video.muted = false;
       unmuteBtn.style.display = 'none';
     }
+
+    // Kick the watchdog whenever the video is healthy.
+    video.addEventListener('timeupdate', () => { lastTime = video.currentTime; resetStallTimer(); });
+    video.addEventListener('playing',    resetStallTimer);
+    // On a stall event, nudge currentTime to unstick the decoder.
+    video.addEventListener('stalled',    () => { video.currentTime += 0.1; });
 
     async function pollStatus() {
       try {
@@ -185,13 +207,11 @@
         if (data.ready) {
           loadText.textContent = 'buffering…';
           startStream();
-        } else {
-          loadText.textContent = 'generating stream…';
-          setTimeout(pollStatus, 2000);
-          return;
+          return; // stream is live — stop polling
         }
+        loadText.textContent = 'generating stream…';
       } catch (_) {}
-      setTimeout(pollStatus, 5000);
+      setTimeout(pollStatus, 2000);
     }
 
     pollStatus();

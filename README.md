@@ -6,15 +6,14 @@ A self-hosted lofi stream that generates video and audio continuously using loca
 
 ## How it works
 
-1. **Scene** — SDXL generates a still image from a text prompt (cozy cafe, rainy night, etc.)
-2. **Video** — Stable Video Diffusion animates the still into a short looping clip
-3. **Audio** — MusicGen generates music, each segment seeded from the tail of the previous one for seamless continuation
-4. **Stream** — FFmpeg muxes audio + looping video into MPEG-TS segments; FastAPI serves a live HLS playlist
+1. **Video** — Wan2.1-T2V-1.3B generates a short looping video clip from the scene prompt
+2. **Audio** — MusicGen generates music, each segment seeded from the tail of the previous one for seamless continuation
+3. **Stream** — FFmpeg muxes audio + looping video into MPEG-TS segments; FastAPI serves a live HLS playlist
 
 ## Requirements
 
 - Python 3.11
-- CUDA GPU with ~12 GB VRAM (tested on RTX 5070)
+- CUDA GPU with ~12 GB VRAM (tested on RTX 5070; Wan needs ~8 GB)
 - FFmpeg
 - `uv`
 
@@ -22,12 +21,6 @@ A self-hosted lofi stream that generates video and audio continuously using loca
 
 ```bash
 uv sync
-```
-
-SVD (Stable Video Diffusion) is a gated model. Before running, accept the license at [huggingface.co/stabilityai/stable-video-diffusion-img2vid-xt](https://huggingface.co/stabilityai/stable-video-diffusion-img2vid-xt) and set your token:
-
-```bash
-export HF_TOKEN=your_token_here
 ```
 
 ## Running
@@ -40,4 +33,4 @@ Open `http://localhost:8000`. The stream starts generating immediately; the page
 
 ## Configuration
 
-Edit `config.py` to change prompts, segment duration, video refresh interval, or model names.
+Edit `config.py` to change prompts, segment duration, video refresh interval, or model settings.
